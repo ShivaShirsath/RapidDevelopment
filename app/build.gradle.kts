@@ -84,6 +84,15 @@ dependencies {
     // AndroidX Security (required by SDK)
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
+    // Navigation
+    implementation("androidx.navigation:navigation-compose:2.7.6")
+    
+    // DataStore for token storage
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
+    
+    // Compose Icons
+    implementation("androidx.compose.material:material-icons-extended:1.6.0")
+
     // Standard app dependencies
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

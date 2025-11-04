@@ -6,14 +6,25 @@ import com.runanywhere.sdk.public.RunAnywhere
 import com.runanywhere.sdk.data.models.SDKEnvironment
 import com.runanywhere.sdk.public.extensions.addModelFromURL
 import com.runanywhere.sdk.llm.llamacpp.LlamaCppServiceProvider
+import com.runanywhere.startup_hackathon20.data.api.RetrofitClient
+import com.runanywhere.startup_hackathon20.data.local.TokenManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 
 class MyApplication : Application() {
+    
+    companion object {
+        lateinit var tokenManager: TokenManager
+            private set
+    }
 
     override fun onCreate() {
         super.onCreate()
+        
+        // Initialize TokenManager and RetrofitClient
+        tokenManager = TokenManager(this)
+        RetrofitClient.initialize(tokenManager)
 
         // Initialize SDK asynchronously
         GlobalScope.launch(Dispatchers.IO) {

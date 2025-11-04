@@ -26,7 +26,7 @@ interface UpdateTaskReqBody {
 
 export const createTask = async (
   req: Request<{}, {}, CreateTaskReqBody>,
-  res: Response<{ success: boolean; error?: string; message: string }>
+  res: Response<{ success: boolean; error?: string; message: string; data?: any }>
 ) => {
   try {
     const { title, description, status, blockReason, projectId, assignedTo } = req.body;
@@ -38,7 +38,7 @@ export const createTask = async (
         .json({ success: false, message: "Project not found" });
     }
 
-    await TaskModel.create({
+    const createdTask = await TaskModel.create({
       title,
       description,
       status,
@@ -50,6 +50,16 @@ export const createTask = async (
     res.status(200).json({
       success: true,
       message: "Task created successfully",
+      data: {
+        id: createdTask._id?.toString() || createdTask.id?.toString() || "",
+        title: createdTask.title,
+        description: createdTask.description,
+        status: createdTask.status,
+        blockReason: createdTask.blockReason ?? "",
+        projectId: createdTask.projectId?.toString() || "",
+        assignedTo: createdTask.assignedTo?.toString() || null,
+        createdAt: createdTask.createdAt,
+      },
     });
   } catch (error) {
     console.error("Error creating task:", error);
@@ -83,12 +93,13 @@ export const getProjectTasks = async (
     res.status(200).json({
       data: tasks.map((task) => {
         return {
-          id: task.id.toString(),
+          id: task._id?.toString() || task.id?.toString() || "",
           title: task.title,
           description: task.description,
           status: task.status,
           blockReason: task.blockReason ?? "",
-          projectId: task.projectId,
+          projectId: task.projectId?.toString() || "",
+          assignedTo: task.assignedTo?.toString() || null,
           createdAt: task.createdAt,
         };
       }),
@@ -106,10 +117,18 @@ export const getProjectTasks = async (
 
 export const updateTask = async (
   req: Request<{ id: string }, {}, UpdateTaskReqBody>,
-  res: Response<{ success: boolean; error?: string; message?: string }>
+  res: Response<{ success: boolean; error?: string; message?: string; data?: any }>
 ) => {
   const { id } = req.params;
   const updatePayload: UpdateTaskReqBody = req.body;
+
+  // Validate: blockReason is required when status is "blocked"
+  if (updatePayload.status === "blocked" && (!updatePayload.blockReason || updatePayload.blockReason.trim() === "")) {
+    return res.status(400).json({
+      success: false,
+      message: "Block reason is required when status is 'blocked'",
+    });
+  }
 
   try {
     const task: ITask | null = await TaskModel.findByIdAndUpdate(
@@ -127,6 +146,17 @@ export const updateTask = async (
     res.status(200).json({
       success: true,
       message: "Task updated successfully",
+      data: {
+        id: task._id?.toString() || task.id?.toString() || "",
+        title: task.title,
+        description: task.description,
+        status: task.status,
+        blockReason: task.blockReason ?? "",
+        projectId: task.projectId?.toString() || "",
+        assignedTo: task.assignedTo?.toString() || null,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
+      },
     });
   } catch (error) {
     console.error("Error updating task:", error);

@@ -8,7 +8,13 @@ export const getDevelopers = async (req: Request<{}, {}, {}>, res: Response<IRes
     return res.status(200).json({
       success: true,
       message: "Developers fetched successfully",
-      data: developers,
+      data: developers.map((dev) => ({
+        id: dev._id?.toString() || dev.id?.toString() || "",
+        name: dev.name,
+        email: dev.email,
+        role: dev.role,
+        createdAt: dev.createdAt,
+      })),
     });
   } catch (error) {
     return res.status(500).json({ message: "Failed to get users", success: false, error: (error as Error).message });

@@ -35,7 +35,7 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
     if (!decoded) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
-    const User: IUser | null = await UserModel.findOne({ email: decoded.username });
+    const User: IUser | null = await UserModel.findOne({ email: decoded.email });
     if (!User) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }

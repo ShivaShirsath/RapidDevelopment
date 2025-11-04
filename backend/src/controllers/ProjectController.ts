@@ -21,14 +21,14 @@ export const createProject = async (
   try {
     const { name, description } = req.body;
     const assignedTo = req.userId;
-    
+
     if (!assignedTo) {
       return res
         .status(401)
         .json({ success: false, message: "Unauthorized" });
     }
 
-    const User: IUser | null = await UserModel.findOne({id: assignedTo});
+    const User: IUser | null = await UserModel.findOne({ id: assignedTo });
     if (!User) {
       return res
         .status(404)
@@ -41,7 +41,7 @@ export const createProject = async (
         .json({ success: false, message: "User is not authorized to create a project" });
     }
 
-    await ProjectModel.create({
+    const createdProject = await ProjectModel.create({
       name,
       description,
       assignedTo,
@@ -49,6 +49,12 @@ export const createProject = async (
     res.status(200).json({
       message: "Project created successfully",
       success: true,
+      data: {
+        id: createdProject._id?.toString() || createdProject.id?.toString() || "",
+        name: createdProject.name,
+        description: createdProject.description,
+        createdAt: createdProject.createdAt,
+      },
     });
   } catch (error) {
     console.error("Error creating project:", error);
@@ -71,7 +77,7 @@ export const getProjects = async (
 ) => {
   try {
     const assignedTo = req.userId;
-    
+
     if (!assignedTo) {
       return res
         .status(401)
@@ -91,7 +97,7 @@ export const getProjects = async (
     }
     res.status(200).json({
       data: projects.map((project) => ({
-        id: project.id.toString(),
+        id: project._id?.toString() || project.id?.toString() || "",
         name: project.name,
         description: project.description,
         createdAt: project.createdAt,
@@ -127,7 +133,7 @@ export const getProject = async (
     }
     res.status(200).json({
       data: {
-        id: project.id.toString(),
+        id: project._id?.toString() || project.id?.toString() || "",
         name: project.name,
         description: project.description,
         createdAt: project.createdAt,

@@ -1,6 +1,7 @@
 package com.runanywhere.startup_hackathon20
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -14,15 +15,53 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.runanywhere.startup_hackathon20.data.repository.AuthRepository
+import com.runanywhere.startup_hackathon20.data.repository.ProjectRepository
+import com.runanywhere.startup_hackathon20.data.repository.TaskRepository
+import com.runanywhere.startup_hackathon20.navigation.AppNavigation
 import com.runanywhere.startup_hackathon20.ui.theme.Startup_hackathon20Theme
+import com.runanywhere.startup_hackathon20.viewmodel.AuthViewModel
+import com.runanywhere.startup_hackathon20.viewmodel.ProjectViewModel
+import com.runanywhere.startup_hackathon20.viewmodel.TaskViewModel
+import com.runanywhere.startup_hackathon20.ChatMessage
+import com.runanywhere.startup_hackathon20.ChatViewModel
 
 class MainActivity : ComponentActivity() {
+    
+    private lateinit var authViewModel: AuthViewModel
+    private lateinit var projectViewModel: ProjectViewModel
+    private lateinit var taskViewModel: TaskViewModel
+    private lateinit var chatViewModel: ChatViewModel
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        Log.d("MainActivity", "Starting onCreate")
+
+        // Initialize repositories
+        val tokenManager = MyApplication.tokenManager
+        val authRepository = AuthRepository(tokenManager)
+        val projectRepository = ProjectRepository(tokenManager)
+        val taskRepository = TaskRepository(tokenManager)
+        
+        // Initialize ViewModels
+        authViewModel = AuthViewModel(authRepository)
+        projectViewModel = ProjectViewModel(projectRepository)
+        taskViewModel = TaskViewModel(taskRepository)
+        chatViewModel = ChatViewModel()
+
+        Log.d("MainActivity", "ViewModels initialized")
+        Log.d("MainActivity", "Token manager initialized: ${tokenManager.isLoggedIn()}")
+
         enableEdgeToEdge()
         setContent {
             Startup_hackathon20Theme {
-                ChatScreen()
+                AppNavigation(
+                    authViewModel = authViewModel,
+                    projectViewModel = projectViewModel,
+                    taskViewModel = taskViewModel,
+                    chatViewModel = chatViewModel
+                )
             }
         }
     }

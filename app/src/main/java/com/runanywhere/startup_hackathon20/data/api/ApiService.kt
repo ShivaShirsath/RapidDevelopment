@@ -53,5 +53,9 @@ interface ApiService {
     
     @DELETE("tasks/{id}")
     suspend fun deleteTask(@Path("id") taskId: String): Response<ApiResponse<Unit>>
+    
+    // User Endpoints
+    @GET("users/developers")
+    suspend fun getDevelopers(): Response<UserListResponse>
 }
 

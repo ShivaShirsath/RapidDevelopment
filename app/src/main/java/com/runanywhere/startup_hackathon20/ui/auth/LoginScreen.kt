@@ -34,28 +34,42 @@ fun LoginScreen(
     val isLoggedIn by authViewModel.isLoggedIn.collectAsState()
     
     // Navigate on successful login
-    LaunchedEffect(isLoggedIn) {
-        if (isLoggedIn) {
-            onLoginSuccess()
+    LaunchedEffect(authState) {
+        when (authState) {
+            is AuthState.Success -> {
+                if (isLoggedIn) {
+                    onLoginSuccess()
+                    authViewModel.resetAuthState()
+                }
+            }
+
+            else -> {}
         }
     }
-    
-    // Show snackbar for errors
+
+    // Show snackbar for errors and success messages
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(authState) {
         when (authState) {
             is AuthState.Error -> {
                 snackbarHostState.showSnackbar((authState as AuthState.Error).message)
+                authViewModel.resetAuthState()
             }
             is AuthState.Success -> {
                 snackbarHostState.showSnackbar((authState as AuthState.Success).message)
+                // Don't reset auth state here, let navigation effect handle it
             }
             else -> {}
         }
     }
     
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.systemBarsPadding()
+            )
+        }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -92,7 +106,8 @@ fun LoginScreen(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                singleLine = true
+                singleLine = true,
+                enabled = authState !is AuthState.Loading
             )
             
             Spacer(modifier = Modifier.height(16.dp))
@@ -116,7 +131,8 @@ fun LoginScreen(
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                singleLine = true
+                singleLine = true,
+                enabled = authState !is AuthState.Loading
             )
             
             Spacer(modifier = Modifier.height(24.dp))
@@ -125,7 +141,7 @@ fun LoginScreen(
             Button(
                 onClick = {
                     if (email.isNotBlank() && password.isNotBlank()) {
-                        authViewModel.login(email, password)
+                        authViewModel.login(email.trim(), password)
                     }
                 },
                 modifier = Modifier
@@ -146,7 +162,10 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(16.dp))
             
             // Register Link
-            TextButton(onClick = onNavigateToRegister) {
+            TextButton(
+                onClick = onNavigateToRegister,
+                enabled = authState !is AuthState.Loading
+            ) {
                 Text("Don't have an account? Register")
             }
         }

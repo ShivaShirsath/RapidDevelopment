@@ -35,6 +35,12 @@ fun ProjectListScreen(
     
     val snackbarHostState = remember { SnackbarHostState() }
     
+    // Load projects when screen is first displayed
+    LaunchedEffect(Unit) {
+        projectViewModel.loadProjects()
+    }
+    
+    // Handle state changes
     LaunchedEffect(projectState) {
         when (projectState) {
             is ProjectState.Success -> {
@@ -47,10 +53,6 @@ fun ProjectListScreen(
             }
             else -> {}
         }
-    }
-    
-    LaunchedEffect(Unit) {
-        projectViewModel.loadProjects()
     }
     
     Scaffold(
@@ -91,7 +93,12 @@ fun ProjectListScreen(
                 Icon(Icons.Default.Add, contentDescription = "Add Project")
             }
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.systemBarsPadding()
+            )
+        }
     ) { padding ->
         Box(
             modifier = Modifier

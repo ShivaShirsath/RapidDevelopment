@@ -30,32 +30,51 @@ fun RegisterScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
     
+    // Role selection
+    val availableRoles = listOf("developer", "project-manager", "admin")
+    var selectedRole by remember { mutableStateOf("developer") }
+    var roleExpanded by remember { mutableStateOf(false) }
+    
     val authState by authViewModel.authState.collectAsState()
     val isLoggedIn by authViewModel.isLoggedIn.collectAsState()
     
     // Navigate on successful registration
-    LaunchedEffect(isLoggedIn) {
-        if (isLoggedIn) {
-            onRegisterSuccess()
+    LaunchedEffect(authState) {
+        when (authState) {
+            is AuthState.Success -> {
+                if (isLoggedIn) {
+                    onRegisterSuccess()
+                    authViewModel.resetAuthState()
+                }
+            }
+
+            else -> {}
         }
     }
-    
-    // Show snackbar for errors
+
+    // Show snackbar for errors and success messages
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(authState) {
         when (authState) {
             is AuthState.Error -> {
                 snackbarHostState.showSnackbar((authState as AuthState.Error).message)
+                authViewModel.resetAuthState()
             }
             is AuthState.Success -> {
                 snackbarHostState.showSnackbar((authState as AuthState.Success).message)
+                // Don't reset auth state here, let navigation effect handle it
             }
             else -> {}
         }
     }
     
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.systemBarsPadding()
+            )
+        }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -91,7 +110,8 @@ fun RegisterScreen(
                     Icon(Icons.Default.Person, contentDescription = "Name")
                 },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true
+                singleLine = true,
+                enabled = authState !is AuthState.Loading
             )
             
             Spacer(modifier = Modifier.height(16.dp))
@@ -106,8 +126,55 @@ fun RegisterScreen(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                singleLine = true
+                singleLine = true,
+                enabled = authState !is AuthState.Loading
             )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Role Selection Dropdown
+            ExposedDropdownMenuBox(
+                expanded = roleExpanded,
+                onExpandedChange = { roleExpanded = !roleExpanded },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = selectedRole.replace("-", " ").split(" ").joinToString(" ") { 
+                        it.replaceFirstChar { char -> char.uppercaseChar() }
+                    },
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Role") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Person, contentDescription = "Role")
+                    },
+                    trailingIcon = {
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = roleExpanded)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(),
+                    enabled = authState !is AuthState.Loading
+                )
+                ExposedDropdownMenu(
+                    expanded = roleExpanded,
+                    onDismissRequest = { roleExpanded = false }
+                ) {
+                    availableRoles.forEach { role ->
+                        DropdownMenuItem(
+                            text = { 
+                                Text(role.replace("-", " ").split(" ").joinToString(" ") { 
+                                    it.replaceFirstChar { char -> char.uppercaseChar() }
+                                })
+                            },
+                            onClick = {
+                                selectedRole = role
+                                roleExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
             
             Spacer(modifier = Modifier.height(16.dp))
             
@@ -130,7 +197,8 @@ fun RegisterScreen(
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                singleLine = true
+                singleLine = true,
+                enabled = authState !is AuthState.Loading
             )
             
             Spacer(modifier = Modifier.height(16.dp))
@@ -155,7 +223,8 @@ fun RegisterScreen(
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 singleLine = true,
-                isError = confirmPassword.isNotEmpty() && password != confirmPassword
+                isError = confirmPassword.isNotEmpty() && password != confirmPassword,
+                enabled = authState !is AuthState.Loading
             )
             
             if (confirmPassword.isNotEmpty() && password != confirmPassword) {
@@ -175,7 +244,7 @@ fun RegisterScreen(
             Button(
                 onClick = {
                     if (name.isNotBlank() && email.isNotBlank() && password.isNotBlank() && password == confirmPassword) {
-                        authViewModel.register(name, email, password)
+                        authViewModel.register(name.trim(), email.trim(), password, selectedRole)
                     }
                 },
                 modifier = Modifier
@@ -200,7 +269,10 @@ fun RegisterScreen(
             Spacer(modifier = Modifier.height(16.dp))
             
             // Login Link
-            TextButton(onClick = onNavigateToLogin) {
+            TextButton(
+                onClick = onNavigateToLogin,
+                enabled = authState !is AuthState.Loading
+            ) {
                 Text("Already have an account? Login")
             }
         }

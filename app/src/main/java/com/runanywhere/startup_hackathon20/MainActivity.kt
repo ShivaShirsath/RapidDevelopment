@@ -1,6 +1,7 @@
 package com.runanywhere.startup_hackathon20
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -22,6 +23,8 @@ import com.runanywhere.startup_hackathon20.ui.theme.Startup_hackathon20Theme
 import com.runanywhere.startup_hackathon20.viewmodel.AuthViewModel
 import com.runanywhere.startup_hackathon20.viewmodel.ProjectViewModel
 import com.runanywhere.startup_hackathon20.viewmodel.TaskViewModel
+import com.runanywhere.startup_hackathon20.ChatMessage
+import com.runanywhere.startup_hackathon20.ChatViewModel
 
 class MainActivity : ComponentActivity() {
     
@@ -32,19 +35,24 @@ class MainActivity : ComponentActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
+        Log.d("MainActivity", "Starting onCreate")
+
         // Initialize repositories
         val tokenManager = MyApplication.tokenManager
         val authRepository = AuthRepository(tokenManager)
-        val projectRepository = ProjectRepository()
-        val taskRepository = TaskRepository()
+        val projectRepository = ProjectRepository(tokenManager)
+        val taskRepository = TaskRepository(tokenManager)
         
         // Initialize ViewModels
         authViewModel = AuthViewModel(authRepository)
         projectViewModel = ProjectViewModel(projectRepository)
         taskViewModel = TaskViewModel(taskRepository)
         chatViewModel = ChatViewModel()
-        
+
+        Log.d("MainActivity", "ViewModels initialized")
+        Log.d("MainActivity", "Token manager initialized: ${tokenManager.isLoggedIn()}")
+
         enableEdgeToEdge()
         setContent {
             Startup_hackathon20Theme {

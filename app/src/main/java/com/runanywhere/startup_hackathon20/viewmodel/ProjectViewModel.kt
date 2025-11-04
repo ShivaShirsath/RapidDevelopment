@@ -76,16 +76,29 @@ class ProjectViewModel(private val projectRepository: ProjectRepository) : ViewM
     fun createProject(name: String, description: String) {
         viewModelScope.launch {
             _projectState.value = ProjectState.Loading
+            _isLoading.value = true
             
             when (val result = projectRepository.createProject(name, description)) {
                 is ProjectResult.SingleSuccess -> {
+                    // Optimistically add the new project to the list
+                    val newProject = result.project
+                    val currentProjects = _projects.value.toMutableList()
+                    currentProjects.add(0, newProject) // Add at the beginning
+                    _projects.value = currentProjects
+                    
                     _projectState.value = ProjectState.Success("Project created successfully")
-                    loadProjects() // Refresh the list
+                    _isLoading.value = false
+                    
+                    // Refresh the list from server to ensure we have the latest data
+                    loadProjects()
                 }
                 is ProjectResult.Error -> {
                     _projectState.value = ProjectState.Error(result.message)
+                    _isLoading.value = false
                 }
-                else -> {}
+                else -> {
+                    _isLoading.value = false
+                }
             }
         }
     }

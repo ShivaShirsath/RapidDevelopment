@@ -1,5 +1,6 @@
 package com.runanywhere.startup_hackathon20.data.api
 
+import android.util.Log
 import com.runanywhere.startup_hackathon20.data.local.TokenManager
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -19,17 +20,28 @@ object RetrofitClient {
     
     fun initialize(tokenManager: TokenManager) {
         this.tokenManager = tokenManager
+        Log.d("RetrofitClient", "Initialized with base URL: $BASE_URL")
     }
     
     private val authInterceptor = Interceptor { chain ->
         val token = tokenManager?.getAccessToken()
         val request = chain.request().newBuilder()
-        
+
+        Log.d("RetrofitClient", "Request URL: ${chain.request().url}")
+
         if (token != null) {
+            Log.d("RetrofitClient", "Adding auth header with token: ${token.substring(0, 10)}...")
             request.addHeader("Authorization", "Bearer $token")
+        } else {
+            Log.d("RetrofitClient", "No auth token available")
         }
-        
-        chain.proceed(request.build())
+
+        val finalRequest = request.build()
+        val response = chain.proceed(finalRequest)
+
+        Log.d("RetrofitClient", "Response code: ${response.code}")
+
+        response
     }
     
     private val loggingInterceptor = HttpLoggingInterceptor().apply {

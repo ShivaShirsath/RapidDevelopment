@@ -1,6 +1,8 @@
 package com.runanywhere.startup_hackathon20.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -31,7 +33,10 @@ fun AppNavigation(
     chatViewModel: ChatViewModel,
     navController: NavHostController = rememberNavController()
 ) {
-    val startDestination = if (authViewModel.isLoggedIn.value) {
+    val isLoggedIn by authViewModel.isLoggedIn.collectAsState()
+
+    // Dynamically determine start destination based on login state
+    val startDestination = if (isLoggedIn) {
         Screen.ProjectList.route
     } else {
         Screen.Login.route
@@ -90,10 +95,10 @@ fun AppNavigation(
         
         // Project Detail Screen
         composable(Screen.ProjectDetail.route) {
-            val selectedProject = projectViewModel.selectedProject.value
-            if (selectedProject != null) {
+            val selectedProject by projectViewModel.selectedProject.collectAsState()
+            selectedProject?.let { project ->
                 ProjectDetailScreen(
-                    project = selectedProject,
+                    project = project,
                     taskViewModel = taskViewModel,
                     onBack = {
                         navController.popBackStack()

@@ -35,17 +35,23 @@ enum class TaskStatus {
 }
 
 data class Task(
+    @SerializedName("id")
+    val id: String? = null,
     @SerializedName("_id")
-    val id: String,
+    val _id: String? = null,
     val title: String,
     val description: String,
     val status: String = "to-do",
     val blockReason: String? = null,
-    val projectId: String,
+    val projectId: String? = null,
     val assignedTo: String? = null,
     val createdAt: String? = null,
     val updatedAt: String? = null
-)
+) {
+    // Helper property to get the ID from either field
+    val taskId: String
+        get() = id ?: _id ?: ""
+}
 
 data class CreateTaskRequest(
     val title: String,

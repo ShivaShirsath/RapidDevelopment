@@ -1,18 +1,29 @@
 package com.runanywhere.startup_hackathon20.ui.projects
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.runanywhere.startup_hackathon20.data.models.Project
 import com.runanywhere.startup_hackathon20.data.models.Task
+import com.runanywhere.startup_hackathon20.data.models.User
+import com.runanywhere.startup_hackathon20.data.repository.UserRepository
+import com.runanywhere.startup_hackathon20.MyApplication
 import com.runanywhere.startup_hackathon20.viewmodel.TaskState
 import com.runanywhere.startup_hackathon20.viewmodel.TaskViewModel
 
@@ -32,6 +43,25 @@ fun ProjectDetailScreen(
     
     val snackbarHostState = remember { SnackbarHostState() }
     
+    // Fetch developers for assignee selection
+    val userRepository = remember { UserRepository(MyApplication.tokenManager) }
+    var developers by remember { mutableStateOf<List<User>>(emptyList()) }
+    var isLoadingDevelopers by remember { mutableStateOf(false) }
+    
+    LaunchedEffect(Unit) {
+        isLoadingDevelopers = true
+        when (val result = userRepository.getDevelopers()) {
+            is com.runanywhere.startup_hackathon20.data.repository.UserResult.Success -> {
+                developers = result.users
+                isLoadingDevelopers = false
+            }
+            is com.runanywhere.startup_hackathon20.data.repository.UserResult.Error -> {
+                isLoadingDevelopers = false
+                // Error loading developers, but continue without assignee selection
+            }
+        }
+    }
+    
     LaunchedEffect(taskState) {
         when (taskState) {
             is TaskState.Success -> {
@@ -46,14 +76,46 @@ fun ProjectDetailScreen(
         }
     }
     
-    LaunchedEffect(project.id) {
-        taskViewModel.loadTasks(project.id)
+    LaunchedEffect(project.projectId) {
+        val projectId = project.projectId
+        if (projectId.isNotBlank()) {
+            taskViewModel.loadTasks(projectId)
+        }
     }
-    
+
+    // Group tasks by status and ensure all statuses are shown
+    val allStatuses = listOf("to-do", "in-progress", "blocked", "done")
+    val groupedTasks = remember(tasks) {
+        val taskMap = tasks.groupBy { it.status }
+        // Create a map with all statuses, using empty list for missing ones
+        allStatuses.associateWith { status ->
+            taskMap[status] ?: emptyList()
+        }.toSortedMap(
+            compareBy { status ->
+                when (status) {
+                    "to-do" -> 0
+                    "in-progress" -> 1
+                    "blocked" -> 2
+                    "done" -> 3
+                    else -> 4
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(project.name) },
+                title = {
+                    Column {
+                        Text(project.name)
+                        Text(
+                            text = project.description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -66,7 +128,12 @@ fun ProjectDetailScreen(
                 Icon(Icons.Default.Add, contentDescription = "Add Task")
             }
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.systemBarsPadding()
+            )
+        }
     ) { padding ->
         Box(
             modifier = Modifier
@@ -77,51 +144,37 @@ fun ProjectDetailScreen(
                 CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center)
                 )
-            } else if (tasks.isEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        Icons.Default.Task,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "No tasks yet",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Create your first task to get started",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             } else {
+                // Always show all status accordions, even when empty
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    items(tasks) { task ->
-                        TaskCard(
-                            task = task,
-                            onStatusChange = { newStatus ->
-                                taskViewModel.updateTask(
-                                    task.id,
-                                    project.id,
-                                    status = newStatus
-                                )
+                    items(groupedTasks.keys.toList()) { status ->
+                        val statusTasks = groupedTasks[status] ?: emptyList()
+                        TaskStatusAccordion(
+                            status = status,
+                            tasks = statusTasks,
+                            onTaskStatusChange = { task, newStatus, blockReason ->
+                                val taskId = task.taskId
+                                val projectId = project.projectId
+                                if (taskId.isNotBlank() && projectId.isNotBlank()) {
+                                    taskViewModel.updateTask(
+                                        taskId,
+                                        projectId,
+                                        status = newStatus,
+                                        blockReason = blockReason
+                                    )
+                                }
                             },
-                            onEdit = { taskToEdit = task },
-                            onDelete = {
-                                taskViewModel.deleteTask(task.id, project.id)
+                            onTaskEdit = { task -> taskToEdit = task },
+                            onTaskDelete = { task ->
+                                val taskId = task.taskId
+                                val projectId = project.projectId
+                                if (taskId.isNotBlank() && projectId.isNotBlank()) {
+                                    taskViewModel.deleteTask(taskId, projectId)
+                                }
                             }
                         )
                     }
@@ -132,9 +185,21 @@ fun ProjectDetailScreen(
     
     if (showCreateTaskDialog) {
         CreateTaskDialog(
+            developers = developers,
+            isLoadingDevelopers = isLoadingDevelopers,
             onDismiss = { showCreateTaskDialog = false },
-            onConfirm = { title, description, status ->
-                taskViewModel.createTask(title, description, project.id, status)
+            onConfirm = { title, description, status, blockReason, assignedTo ->
+                val projectId = project.projectId
+                if (projectId.isNotBlank()) {
+                    taskViewModel.createTask(
+                        title = title,
+                        description = description,
+                        projectId = projectId,
+                        status = status,
+                        blockReason = blockReason,
+                        assignedTo = assignedTo
+                    )
+                }
                 showCreateTaskDialog = false
             }
         )
@@ -143,34 +208,298 @@ fun ProjectDetailScreen(
     taskToEdit?.let { task ->
         EditTaskDialog(
             task = task,
+            developers = developers,
+            isLoadingDevelopers = isLoadingDevelopers,
             onDismiss = { taskToEdit = null },
-            onConfirm = { title, description, status ->
-                taskViewModel.updateTask(
-                    task.id,
-                    project.id,
-                    title = title,
-                    description = description,
-                    status = status
-                )
+            onConfirm = { title, description, status, blockReason, assignedTo ->
+                val taskId = task.taskId
+                val projectId = project.projectId
+                if (taskId.isNotBlank() && projectId.isNotBlank()) {
+                    taskViewModel.updateTask(
+                        taskId,
+                        projectId,
+                        title = title,
+                        description = description,
+                        status = status,
+                        blockReason = blockReason,
+                        assignedTo = assignedTo
+                    )
+                }
                 taskToEdit = null
             }
         )
     }
 }
 
+// Helper function to get meaningful empty state message based on status
+private fun getEmptyStatusMessage(status: String): String {
+    return when (status) {
+        "to-do" -> "No tasks to do"
+        "in-progress" -> "No tasks in progress"
+        "blocked" -> "No blocked tasks"
+        "done" -> "No completed tasks"
+        else -> "No tasks in this status"
+    }
+}
+
+// Helper function to get meaningful empty state sub-message based on status
+private fun getEmptyStatusSubMessage(status: String): String {
+    return when (status) {
+        "to-do" -> "Create a new task to get started"
+        "in-progress" -> "Move a task here to start working on it"
+        "blocked" -> "Tasks that are blocked will appear here"
+        "done" -> "Completed tasks will be shown here"
+        else -> "Add tasks to see them here"
+    }
+}
+
+@Composable
+fun BlockReasonDialog(
+    currentBlockReason: String?,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var blockReason by remember { mutableStateOf(currentBlockReason ?: "") }
+    var isError by remember { mutableStateOf(false) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Block Reason Required") },
+        text = {
+            Column {
+                Text(
+                    text = "Please provide a reason for blocking this task.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                OutlinedTextField(
+                    value = blockReason,
+                    onValueChange = { 
+                        blockReason = it
+                        isError = false
+                    },
+                    label = { 
+                        Text(
+                            "Block Reason (Required)",
+                            color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                        )
+                    },
+                    placeholder = { Text("What is blocking this task?") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    maxLines = 5,
+                    isError = isError,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
+                    )
+                )
+                if (isError) {
+                    Text(
+                        text = "Block reason is required",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 4.dp, start = 16.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (blockReason.isNotBlank()) {
+                        onConfirm(blockReason.trim())
+                    } else {
+                        isError = true
+                    }
+                }
+            ) {
+                Text("Block Task")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+fun TaskStatusAccordion(
+    status: String,
+    tasks: List<Task>,
+    onTaskStatusChange: (Task, String, String?) -> Unit,
+    onTaskEdit: (Task) -> Unit,
+    onTaskDelete: (Task) -> Unit
+) {
+    var isExpanded by remember { mutableStateOf(true) }
+    val rotationState by animateFloatAsState(
+        targetValue = if (isExpanded) 180f else 0f,
+        label = "chevron_rotation"
+    )
+
+    val statusDisplayName = when (status) {
+        "to-do" -> "To Do"
+        "in-progress" -> "In Progress"
+        "blocked" -> "Blocked"
+        "done" -> "Done"
+        else -> status.replaceFirstChar { it.uppercase() }
+    }
+
+    val statusColor = when (status) {
+        "to-do" -> MaterialTheme.colorScheme.secondary
+        "in-progress" -> MaterialTheme.colorScheme.primary
+        "blocked" -> MaterialTheme.colorScheme.error
+        "done" -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.secondary
+    }
+
+    val statusIcon = when (status) {
+        "to-do" -> Icons.Default.Circle
+        "in-progress" -> Icons.Default.PlayArrow
+        "blocked" -> Icons.Default.Block
+        "done" -> Icons.Default.CheckCircle
+        else -> Icons.Default.Circle
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize()
+            .border(
+                width = 1.dp,
+                color = statusColor.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(12.dp)
+            ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column {
+            // Accordion Header
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isExpanded = !isExpanded },
+                color = statusColor.copy(alpha = 0.1f),
+                shape = if (isExpanded) RoundedCornerShape(
+                    topStart = 12.dp,
+                    topEnd = 12.dp,
+                    bottomStart = 0.dp,
+                    bottomEnd = 0.dp
+                ) else RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = statusIcon,
+                            contentDescription = null,
+                            tint = statusColor,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Text(
+                            text = "$statusDisplayName (${tasks.size})",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = statusColor
+                        )
+                    }
+
+                    Icon(
+                        imageVector = Icons.Default.ExpandMore,
+                        contentDescription = if (isExpanded) "Collapse" else "Expand",
+                        modifier = Modifier.rotate(rotationState),
+                        tint = statusColor
+                    )
+                }
+            }
+
+            // Accordion Content
+            if (isExpanded) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (tasks.isEmpty()) {
+                        // Enhanced empty state with meaningful message
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Task,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(48.dp),
+                                    tint = statusColor.copy(alpha = 0.5f)
+                                )
+                                Text(
+                                    text = getEmptyStatusMessage(status),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
+                                Text(
+                                    text = getEmptyStatusSubMessage(status),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        tasks.forEach { task ->
+                            TaskCard(
+                                task = task,
+                                onStatusChange = { newStatus, blockReason ->
+                                    onTaskStatusChange(task, newStatus, blockReason)
+                                },
+                                onEdit = { onTaskEdit(task) },
+                                onDelete = { onTaskDelete(task) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun TaskCard(
     task: Task,
-    onStatusChange: (String) -> Unit,
+    onStatusChange: (String, String?) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showBlockReasonDialog by remember { mutableStateOf(false) }
+    var pendingStatus by remember { mutableStateOf<String?>(null) }
     
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        )
     ) {
         Column(
             modifier = Modifier
@@ -206,6 +535,45 @@ fun TaskCard(
                         onDismissRequest = { showMenu = false }
                     ) {
                         DropdownMenuItem(
+                            text = { Text("Change Status") },
+                            onClick = { showMenu = false },
+                            leadingIcon = {
+                                Icon(Icons.Default.SwapHoriz, contentDescription = "Change Status")
+                            }
+                        )
+                        Divider()
+                        // Status options
+                        listOf("to-do", "in-progress", "blocked", "done").forEach { statusOption ->
+                            if (statusOption != task.status) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            when (statusOption) {
+                                                "to-do" -> "To Do"
+                                                "in-progress" -> "In Progress"
+                                                "blocked" -> "Blocked"
+                                                "done" -> "Done"
+                                                else -> statusOption
+                                            }
+                                        )
+                                    },
+                                    onClick = {
+                                        if (statusOption == "blocked") {
+                                            // Show block reason dialog for blocked status
+                                            pendingStatus = statusOption
+                                            showBlockReasonDialog = true
+                                            showMenu = false
+                                        } else {
+                                            // Direct status change for other statuses
+                                            onStatusChange(statusOption, null)
+                                            showMenu = false
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        Divider()
+                        DropdownMenuItem(
                             text = { Text("Edit") },
                             onClick = {
                                 showMenu = false
@@ -228,14 +596,6 @@ fun TaskCard(
                     }
                 }
             }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Status Chip
-            TaskStatusChip(
-                status = task.status,
-                onStatusChange = onStatusChange
-            )
         }
     }
     
@@ -243,7 +603,7 @@ fun TaskCard(
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text("Delete Task") },
-            text = { Text("Are you sure you want to delete this task?") },
+            text = { Text("Are you sure you want to delete \"${task.title}\"?") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -261,55 +621,41 @@ fun TaskCard(
             }
         )
     }
-}
-
-@Composable
-fun TaskStatusChip(status: String, onStatusChange: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
     
-    val statusColor = when (status) {
-        "to-do" -> MaterialTheme.colorScheme.secondary
-        "in-progress" -> MaterialTheme.colorScheme.primary
-        "blocked" -> MaterialTheme.colorScheme.error
-        "done" -> MaterialTheme.colorScheme.tertiary
-        else -> MaterialTheme.colorScheme.secondary
-    }
-    
-    Box {
-        FilterChip(
-            selected = true,
-            onClick = { expanded = true },
-            label = { Text(status) },
-            colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = statusColor
-            )
-        )
-        
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            listOf("to-do", "in-progress", "blocked", "done").forEach { statusOption ->
-                DropdownMenuItem(
-                    text = { Text(statusOption) },
-                    onClick = {
-                        onStatusChange(statusOption)
-                        expanded = false
-                    }
-                )
+    if (showBlockReasonDialog) {
+        BlockReasonDialog(
+            currentBlockReason = task.blockReason,
+            onDismiss = { 
+                showBlockReasonDialog = false
+                pendingStatus = null
+            },
+            onConfirm = { blockReason ->
+                pendingStatus?.let { status ->
+                    onStatusChange(status, blockReason)
+                }
+                showBlockReasonDialog = false
+                pendingStatus = null
             }
-        }
+        )
     }
 }
 
 @Composable
 fun CreateTaskDialog(
+    developers: List<User>,
+    isLoadingDevelopers: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String) -> Unit
+    onConfirm: (String, String, String, String?, String?) -> Unit
 ) {
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("to-do") }
+    var blockReason by remember { mutableStateOf("") }
+    var assignedTo by remember { mutableStateOf<String?>(null) }
+    var showStatusDropdown by remember { mutableStateOf(false) }
+    var showAssigneeDropdown by remember { mutableStateOf(false) }
+    var showBlockReasonDialog by remember { mutableStateOf(false) }
+    var isBlockReasonError by remember { mutableStateOf(false) }
     
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -332,13 +678,156 @@ fun CreateTaskDialog(
                     minLines = 3,
                     maxLines = 5
                 )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Status Selection
+                Box {
+                    OutlinedTextField(
+                        value = when (status) {
+                            "to-do" -> "To Do"
+                            "in-progress" -> "In Progress"
+                            "blocked" -> "Blocked"
+                            "done" -> "Done"
+                            else -> status
+                        },
+                        onValueChange = { },
+                        label = { Text("Status") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showStatusDropdown = true },
+                        readOnly = true,
+                        trailingIcon = {
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Status")
+                        }
+                    )
+
+                    DropdownMenu(
+                        expanded = showStatusDropdown,
+                        onDismissRequest = { showStatusDropdown = false }
+                    ) {
+                        listOf("to-do", "in-progress", "blocked", "done").forEach { statusOption ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        when (statusOption) {
+                                            "to-do" -> "To Do"
+                                            "in-progress" -> "In Progress"
+                                            "blocked" -> "Blocked"
+                                            "done" -> "Done"
+                                            else -> statusOption
+                                        }
+                                    )
+                                },
+                                onClick = {
+                                    if (statusOption == "blocked") {
+                                        // Show block reason dialog for blocked status
+                                        showBlockReasonDialog = true
+                                        showStatusDropdown = false
+                                    } else {
+                                        status = statusOption
+                                        blockReason = ""
+                                        isBlockReasonError = false
+                                        showStatusDropdown = false
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Assignee Selection
+                Box {
+                    val selectedDeveloper = developers.find { it.userId == assignedTo }
+                    OutlinedTextField(
+                        value = selectedDeveloper?.name ?: "None",
+                        onValueChange = { },
+                        label = { Text("Assignee") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showAssigneeDropdown = true },
+                        readOnly = true,
+                        trailingIcon = {
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Assignee")
+                        },
+                        enabled = !isLoadingDevelopers
+                    )
+
+                    DropdownMenu(
+                        expanded = showAssigneeDropdown,
+                        onDismissRequest = { showAssigneeDropdown = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("None") },
+                            onClick = {
+                                assignedTo = null
+                                showAssigneeDropdown = false
+                            }
+                        )
+                        developers.forEach { developer ->
+                            DropdownMenuItem(
+                                text = { Text(developer.name) },
+                                onClick = {
+                                    assignedTo = developer.userId
+                                    showAssigneeDropdown = false
+                                }
+                            )
+                        }
+                    }
+                }
+                
+                // Block Reason - only show when status is "blocked"
+                if (status == "blocked") {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = blockReason,
+                        onValueChange = { 
+                            blockReason = it
+                            isBlockReasonError = false
+                        },
+                        label = { 
+                            Text(
+                                "Block Reason (Required)",
+                                color = if (isBlockReasonError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                            )
+                        },
+                        placeholder = { Text("What is blocking this task?") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3,
+                        maxLines = 5,
+                        isError = isBlockReasonError,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = if (isBlockReasonError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = if (isBlockReasonError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
+                        )
+                    )
+                    if (isBlockReasonError) {
+                        Text(
+                            text = "Block reason is required when status is blocked",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 4.dp, start = 16.dp)
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
                     if (title.isNotBlank() && description.isNotBlank()) {
-                        onConfirm(title, description, status)
+                        // Validate blockReason when status is blocked
+                        if (status == "blocked" && blockReason.isBlank()) {
+                            isBlockReasonError = true
+                        } else {
+                            onConfirm(
+                                title, 
+                                description, 
+                                status, 
+                                if (status == "blocked") blockReason.trim() else null,
+                                assignedTo
+                            )
+                        }
                     }
                 },
                 enabled = title.isNotBlank() && description.isNotBlank()
@@ -352,17 +841,41 @@ fun CreateTaskDialog(
             }
         }
     )
+    
+    // Block Reason Dialog for Create Task
+    if (showBlockReasonDialog) {
+        BlockReasonDialog(
+            currentBlockReason = blockReason,
+            onDismiss = { 
+                showBlockReasonDialog = false
+                status = "to-do" // Reset to default if cancelled
+            },
+            onConfirm = { reason ->
+                blockReason = reason
+                status = "blocked"
+                showBlockReasonDialog = false
+            }
+        )
+    }
 }
 
 @Composable
 fun EditTaskDialog(
     task: Task,
+    developers: List<User>,
+    isLoadingDevelopers: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, String) -> Unit
+    onConfirm: (String, String, String, String?, String?) -> Unit
 ) {
     var title by remember { mutableStateOf(task.title) }
     var description by remember { mutableStateOf(task.description) }
     var status by remember { mutableStateOf(task.status) }
+    var blockReason by remember { mutableStateOf(task.blockReason ?: "") }
+    var assignedTo by remember { mutableStateOf<String?>(task.assignedTo) }
+    var showStatusDropdown by remember { mutableStateOf(false) }
+    var showAssigneeDropdown by remember { mutableStateOf(false) }
+    var showBlockReasonDialog by remember { mutableStateOf(false) }
+    var isBlockReasonError by remember { mutableStateOf(false) }
     
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -385,13 +898,158 @@ fun EditTaskDialog(
                     minLines = 3,
                     maxLines = 5
                 )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Status Selection
+                Box {
+                    OutlinedTextField(
+                        value = when (status) {
+                            "to-do" -> "To Do"
+                            "in-progress" -> "In Progress"
+                            "blocked" -> "Blocked"
+                            "done" -> "Done"
+                            else -> status
+                        },
+                        onValueChange = { },
+                        label = { Text("Status") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showStatusDropdown = true },
+                        readOnly = true,
+                        trailingIcon = {
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Status")
+                        }
+                    )
+
+                    DropdownMenu(
+                        expanded = showStatusDropdown,
+                        onDismissRequest = { showStatusDropdown = false }
+                    ) {
+                        listOf("to-do", "in-progress", "blocked", "done").forEach { statusOption ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        when (statusOption) {
+                                            "to-do" -> "To Do"
+                                            "in-progress" -> "In Progress"
+                                            "blocked" -> "Blocked"
+                                            "done" -> "Done"
+                                            else -> statusOption
+                                        }
+                                    )
+                                },
+                                onClick = {
+                                    if (statusOption == "blocked" && status != "blocked") {
+                                        // Show block reason dialog when changing to blocked
+                                        showBlockReasonDialog = true
+                                        showStatusDropdown = false
+                                    } else {
+                                        status = statusOption
+                                        if (statusOption != "blocked") {
+                                            blockReason = ""
+                                            isBlockReasonError = false
+                                        }
+                                        showStatusDropdown = false
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Assignee Selection
+                Box {
+                    val selectedDeveloper = developers.find { it.userId == assignedTo }
+                    OutlinedTextField(
+                        value = selectedDeveloper?.name ?: "None",
+                        onValueChange = { },
+                        label = { Text("Assignee") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showAssigneeDropdown = true },
+                        readOnly = true,
+                        trailingIcon = {
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Assignee")
+                        },
+                        enabled = !isLoadingDevelopers
+                    )
+
+                    DropdownMenu(
+                        expanded = showAssigneeDropdown,
+                        onDismissRequest = { showAssigneeDropdown = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("None") },
+                            onClick = {
+                                assignedTo = null
+                                showAssigneeDropdown = false
+                            }
+                        )
+                        developers.forEach { developer ->
+                            DropdownMenuItem(
+                                text = { Text(developer.name) },
+                                onClick = {
+                                    assignedTo = developer.userId
+                                    showAssigneeDropdown = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Block Reason - only show when status is "blocked"
+                if (status == "blocked") {
+                    OutlinedTextField(
+                        value = blockReason,
+                        onValueChange = { 
+                            blockReason = it
+                            isBlockReasonError = false
+                        },
+                        label = { 
+                            Text(
+                                "Block Reason (Required)",
+                                color = if (isBlockReasonError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                            )
+                        },
+                        placeholder = { Text("What is blocking this task?") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3,
+                        maxLines = 5,
+                        isError = isBlockReasonError,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = if (isBlockReasonError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = if (isBlockReasonError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
+                        )
+                    )
+                    if (isBlockReasonError) {
+                        Text(
+                            text = "Block reason is required when status is blocked",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 4.dp, start = 16.dp)
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
                     if (title.isNotBlank() && description.isNotBlank()) {
-                        onConfirm(title, description, status)
+                        // Validate blockReason when status is blocked
+                        if (status == "blocked" && blockReason.isBlank()) {
+                            isBlockReasonError = true
+                        } else {
+                            onConfirm(
+                                title, 
+                                description, 
+                                status, 
+                                if (status == "blocked") blockReason.trim() else null,
+                                assignedTo
+                            )
+                        }
                     }
                 },
                 enabled = title.isNotBlank() && description.isNotBlank()
@@ -405,5 +1063,20 @@ fun EditTaskDialog(
             }
         }
     )
+    
+    // Block Reason Dialog for Edit Task
+    if (showBlockReasonDialog) {
+        BlockReasonDialog(
+            currentBlockReason = blockReason,
+            onDismiss = { 
+                showBlockReasonDialog = false
+            },
+            onConfirm = { reason ->
+                blockReason = reason
+                status = "blocked"
+                showBlockReasonDialog = false
+            }
+        )
+    }
 }
 

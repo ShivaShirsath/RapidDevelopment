@@ -25,13 +25,16 @@ class AuthRepository(private val tokenManager: TokenManager) {
                 if (response.isSuccessful && response.body() != null) {
                     val authResponse = response.body()!!
                     
-                    if (authResponse.success && authResponse.accessToken != null && authResponse.refreshToken != null) {
+                    if (authResponse.success && authResponse.data != null) {
+                        val token = authResponse.data.token
+                        val refreshToken = authResponse.data.refreshToken
+                        
                         // Save tokens
-                        tokenManager.saveTokens(authResponse.accessToken, authResponse.refreshToken)
+                        tokenManager.saveTokens(token, refreshToken)
                         
                         // Save user info
                         authResponse.user?.let { user ->
-                            tokenManager.saveUserInfo(user.id, user.name, user.email, user.role)
+                            tokenManager.saveUserInfo(user.id.toString(), user.name, user.email, user.role)
                         }
                         
                         AuthResult.Success(authResponse)
@@ -47,7 +50,7 @@ class AuthRepository(private val tokenManager: TokenManager) {
         }
     }
     
-    suspend fun register(name: String, email: String, password: String, role: String = "user"): AuthResult {
+    suspend fun register(name: String, email: String, password: String, role: String = "developer"): AuthResult {
         return withContext(Dispatchers.IO) {
             try {
                 val response = apiService.register(RegisterRequest(name, email, password, role))
@@ -55,16 +58,16 @@ class AuthRepository(private val tokenManager: TokenManager) {
                 if (response.isSuccessful && response.body() != null) {
                     val authResponse = response.body()!!
                     
-                    if (authResponse.success) {
-                        // Optionally auto-login after registration
-                        authResponse.accessToken?.let { accessToken ->
-                            authResponse.refreshToken?.let { refreshToken ->
-                                tokenManager.saveTokens(accessToken, refreshToken)
-                                
-                                authResponse.user?.let { user ->
-                                    tokenManager.saveUserInfo(user.id, user.name, user.email, user.role)
-                                }
-                            }
+                    if (authResponse.success && authResponse.data != null) {
+                        val token = authResponse.data.token
+                        val refreshToken = authResponse.data.refreshToken
+                        
+                        // Save tokens
+                        tokenManager.saveTokens(token, refreshToken)
+                        
+                        // Save user info if available
+                        authResponse.user?.let { user ->
+                            tokenManager.saveUserInfo(user.id.toString(), user.name, user.email, user.role)
                         }
                         
                         AuthResult.Success(authResponse)

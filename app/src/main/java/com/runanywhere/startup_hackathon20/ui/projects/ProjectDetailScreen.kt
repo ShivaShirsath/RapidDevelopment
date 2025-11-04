@@ -1,10 +1,10 @@
 package com.runanywhere.startup_hackathon20.ui.projects
 
+import androidx.compose.foundation.layout.*
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -640,6 +640,7 @@ fun TaskCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateTaskDialog(
     developers: List<User>,
@@ -737,23 +738,30 @@ fun CreateTaskDialog(
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 // Assignee Selection
-                Box {
+                ExposedDropdownMenuBox(
+                    expanded = showAssigneeDropdown,
+                    onExpandedChange = { showAssigneeDropdown = !showAssigneeDropdown },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     val selectedDeveloper = developers.find { it.userId == assignedTo }
                     OutlinedTextField(
-                        value = selectedDeveloper?.name ?: "None",
+                        value = if (isLoadingDevelopers) "Loading..." else (selectedDeveloper?.name ?: "None"),
                         onValueChange = { },
                         label = { Text("Assignee") },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { showAssigneeDropdown = true },
+                            .menuAnchor(),
                         readOnly = true,
                         trailingIcon = {
-                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Assignee")
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = showAssigneeDropdown)
                         },
-                        enabled = !isLoadingDevelopers
+                        enabled = !isLoadingDevelopers,
+                        leadingIcon = if (isLoadingDevelopers) {
+                            { CircularProgressIndicator(modifier = Modifier.size(16.dp)) }
+                        } else null
                     )
 
-                    DropdownMenu(
+                    ExposedDropdownMenu(
                         expanded = showAssigneeDropdown,
                         onDismissRequest = { showAssigneeDropdown = false }
                     ) {
@@ -764,14 +772,33 @@ fun CreateTaskDialog(
                                 showAssigneeDropdown = false
                             }
                         )
-                        developers.forEach { developer ->
+                        if (developers.isEmpty() && !isLoadingDevelopers) {
                             DropdownMenuItem(
-                                text = { Text(developer.name) },
-                                onClick = {
-                                    assignedTo = developer.userId
-                                    showAssigneeDropdown = false
-                                }
+                                text = { Text("No developers available") },
+                                onClick = { }
                             )
+                        } else {
+                            developers.forEach { developer ->
+                                DropdownMenuItem(
+                                    text = { 
+                                        Column {
+                                            Text(
+                                                text = developer.name,
+                                                style = MaterialTheme.typography.bodyLarge
+                                            )
+                                            Text(
+                                                text = developer.email,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        assignedTo = developer.userId
+                                        showAssigneeDropdown = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -859,6 +886,7 @@ fun CreateTaskDialog(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditTaskDialog(
     task: Task,
@@ -959,23 +987,30 @@ fun EditTaskDialog(
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 // Assignee Selection
-                Box {
+                ExposedDropdownMenuBox(
+                    expanded = showAssigneeDropdown,
+                    onExpandedChange = { showAssigneeDropdown = !showAssigneeDropdown },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     val selectedDeveloper = developers.find { it.userId == assignedTo }
                     OutlinedTextField(
-                        value = selectedDeveloper?.name ?: "None",
+                        value = if (isLoadingDevelopers) "Loading..." else (selectedDeveloper?.name ?: "None"),
                         onValueChange = { },
                         label = { Text("Assignee") },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { showAssigneeDropdown = true },
+                            .menuAnchor(),
                         readOnly = true,
                         trailingIcon = {
-                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Assignee")
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = showAssigneeDropdown)
                         },
-                        enabled = !isLoadingDevelopers
+                        enabled = !isLoadingDevelopers,
+                        leadingIcon = if (isLoadingDevelopers) {
+                            { CircularProgressIndicator(modifier = Modifier.size(16.dp)) }
+                        } else null
                     )
 
-                    DropdownMenu(
+                    ExposedDropdownMenu(
                         expanded = showAssigneeDropdown,
                         onDismissRequest = { showAssigneeDropdown = false }
                     ) {
@@ -986,14 +1021,33 @@ fun EditTaskDialog(
                                 showAssigneeDropdown = false
                             }
                         )
-                        developers.forEach { developer ->
+                        if (developers.isEmpty() && !isLoadingDevelopers) {
                             DropdownMenuItem(
-                                text = { Text(developer.name) },
-                                onClick = {
-                                    assignedTo = developer.userId
-                                    showAssigneeDropdown = false
-                                }
+                                text = { Text("No developers available") },
+                                onClick = { }
                             )
+                        } else {
+                            developers.forEach { developer ->
+                                DropdownMenuItem(
+                                    text = { 
+                                        Column {
+                                            Text(
+                                                text = developer.name,
+                                                style = MaterialTheme.typography.bodyLarge
+                                            )
+                                            Text(
+                                                text = developer.email,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        assignedTo = developer.userId
+                                        showAssigneeDropdown = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }

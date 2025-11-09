@@ -2,6 +2,7 @@ const TaskModel = require("../models/TaskModel");
 const ProjectModel = require("../models/ProjectModel");
 import { Request, Response } from "express";
 import { IProject, ITask, TaskStatus } from "../types/types";
+import { isUserManager } from "./ProjectController";
 
 interface CreateTaskReqBody {
   title: string;
@@ -26,10 +27,15 @@ interface UpdateTaskReqBody {
 
 export const createTask = async (
   req: Request<{}, {}, CreateTaskReqBody>,
-  res: Response<{ success: boolean; error?: string; message: string; data?: any }>
+  res: Response<{
+    success: boolean;
+    error?: string;
+    message: string;
+  }>
 ) => {
   try {
-    const { title, description, status, blockReason, projectId, assignedTo } = req.body;
+    const { title, description, status, blockReason, projectId, assignedTo } =
+      req.body;
 
     const Project: IProject | null = await ProjectModel.findById(projectId);
     if (!Project) {
@@ -50,16 +56,6 @@ export const createTask = async (
     res.status(200).json({
       success: true,
       message: "Task created successfully",
-      data: {
-        id: createdTask._id?.toString() || createdTask.id?.toString() || "",
-        title: createdTask.title,
-        description: createdTask.description,
-        status: createdTask.status,
-        blockReason: createdTask.blockReason ?? "",
-        projectId: createdTask.projectId?.toString() || "",
-        assignedTo: createdTask.assignedTo?.toString() || null,
-        createdAt: createdTask.createdAt,
-      },
     });
   } catch (error) {
     console.error("Error creating task:", error);
@@ -80,31 +76,55 @@ export const getProjectTasks = async (
     message?: string;
   }>
 ) => {
-  const { projectId } = req.query;
-
-  if (!projectId) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Project ID is required" });
-  }
-
   try {
-    const tasks: ITask[] = await TaskModel.find({ projectId });
-    res.status(200).json({
-      data: tasks.map((task) => {
-        return {
-          id: task._id?.toString() || task.id?.toString() || "",
-          title: task.title,
-          description: task.description,
-          status: task.status,
-          blockReason: task.blockReason ?? "",
-          projectId: task.projectId?.toString() || "",
-          assignedTo: task.assignedTo?.toString() || null,
-          createdAt: task.createdAt,
-        };
-      }),
-      success: true,
-    });
+    const { projectId } = req.query;
+    if (!projectId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Project ID is required" });
+    }
+    const userId = req.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+    const isManager = await isUserManager(userId, "project-manager");
+    if (isManager) {
+      const tasks: ITask[] = await TaskModel.find({ projectId });
+      res.status(200).json({
+        data: tasks.map((task) => {
+          return {
+            _id: task._id?.toString() || "",
+            title: task.title,
+            description: task.description,
+            status: task.status,
+            blockReason: task.blockReason ?? "",
+            projectId: task.projectId?.toString() || "",
+            assignedTo: task.assignedTo?.toString() || "",
+            createdAt: task.createdAt,
+            updatedAt: task.updatedAt,
+          };
+        }),
+        success: true,
+      });
+    } else {
+      const tasks: ITask[] = await TaskModel.find({ assignedTo: userId });
+      res.status(200).json({
+        data: tasks.map((task) => {
+          return {
+            _id: task._id?.toString() || "",
+            title: task.title,
+            description: task.description,
+            status: task.status,
+            blockReason: task.blockReason ?? "",
+            projectId: task.projectId?.toString() || "",
+            assignedTo: task.assignedTo?.toString() || "",
+            createdAt: task.createdAt,
+            updatedAt: task.updatedAt,
+          };
+        }),
+        success: true,
+      });
+    }
   } catch (error) {
     console.error("Error fetching tasks:", error);
     res.status(500).json({
@@ -117,13 +137,21 @@ export const getProjectTasks = async (
 
 export const updateTask = async (
   req: Request<{ id: string }, {}, UpdateTaskReqBody>,
-  res: Response<{ success: boolean; error?: string; message?: string; data?: any }>
+  res: Response<{
+    success: boolean;
+    error?: string;
+    message?: string;
+    data?: any;
+  }>
 ) => {
   const { id } = req.params;
   const updatePayload: UpdateTaskReqBody = req.body;
 
   // Validate: blockReason is required when status is "blocked"
-  if (updatePayload.status === "blocked" && (!updatePayload.blockReason || updatePayload.blockReason.trim() === "")) {
+  if (
+    updatePayload.status === "blocked" &&
+    (!updatePayload.blockReason || updatePayload.blockReason.trim() === "")
+  ) {
     return res.status(400).json({
       success: false,
       message: "Block reason is required when status is 'blocked'",
@@ -147,7 +175,7 @@ export const updateTask = async (
       success: true,
       message: "Task updated successfully",
       data: {
-        id: task._id?.toString() || task.id?.toString() || "",
+        _id: task._id?.toString() || "",
         title: task.title,
         description: task.description,
         status: task.status,

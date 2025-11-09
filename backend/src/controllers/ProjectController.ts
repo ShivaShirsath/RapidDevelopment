@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
-import { IProject, IUser, UserRole } from "../types/types";
+import { IProject, ITask, IUser, UserRole } from "../types/types";
 const ProjectModel = require("../models/ProjectModel");
 const UserModel = require("../models/UserModel");
+const TaskModel = require("../models/TaskModel");
 
 interface CreateProjectReqBody {
   name: string;
@@ -13,7 +14,6 @@ interface UpdateProjectReqBody {
   description?: string;
 }
 
-
 export const createProject = async (
   req: Request<{}, {}, CreateProjectReqBody>,
   res: Response<{ message: string; success: boolean; error?: string }>
@@ -23,25 +23,24 @@ export const createProject = async (
     const assignedTo = req.userId;
 
     if (!assignedTo) {
-      return res
-        .status(401)
-        .json({ success: false, message: "Unauthorized" });
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const User: IUser | null = await UserModel.findOne({ id: assignedTo });
+    const User: IUser | null = await UserModel.findById(assignedTo);
     if (!User) {
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
     }
 
-    if (!isUserAuthorized(User.id, "project-manager")) {
-      return res
-        .status(403)
-        .json({ success: false, message: "User is not authorized to create a project" });
+    if (!isUserManager(User._id, "project-manager")) {
+      return res.status(403).json({
+        success: false,
+        message: "User is not authorized to create a project",
+      });
     }
 
-    const createdProject = await ProjectModel.create({
+    await ProjectModel.create({
       name,
       description,
       assignedTo,
@@ -49,12 +48,6 @@ export const createProject = async (
     res.status(200).json({
       message: "Project created successfully",
       success: true,
-      data: {
-        id: createdProject._id?.toString() || createdProject.id?.toString() || "",
-        name: createdProject.name,
-        description: createdProject.description,
-        createdAt: createdProject.createdAt,
-      },
     });
   } catch (error) {
     console.error("Error creating project:", error);
@@ -79,31 +72,42 @@ export const getProjects = async (
     const assignedTo = req.userId;
 
     if (!assignedTo) {
-      return res
-        .status(401)
-        .json({ success: false, message: "Unauthorized" });
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     }
-
-    if (!isUserAuthorized(assignedTo, "project-manager")) {
-      return res
-        .status(403)
-        .json({ success: false, message: "User is not authorized to get projects" });
+    const isManager = await isUserManager(assignedTo, "project-manager");
+    if (isManager) {
+      const projects: IProject[] = await getManagerProjects(assignedTo);
+      if (!projects || projects.length === 0) {
+        return res
+          .status(200)
+          .json({ success: true, data: [], message: "No projects found" });
+      }
+      return res.status(200).json({
+        success: true,
+        data: projects.map((project) => ({
+          _id: project._id?.toString() || "",
+          name: project.name,
+          description: project.description,
+          createdAt: project.createdAt,
+        })),
+      });
+    } else {
+      const projects: IProject[] = await getDeveloperProjects(assignedTo);
+      if (!projects || projects.length === 0) {
+        return res
+          .status(200)
+          .json({ success: true, data: [], message: "No projects found" });
+      }
+      return res.status(200).json({
+        success: true,
+        data: projects.map((project) => ({
+          _id: project._id?.toString() || "",
+          name: project.name,
+          description: project.description,
+          createdAt: project.createdAt,
+        })),
+      });
     }
-    const projects: IProject[] = await ProjectModel.find({ assignedTo });
-    if (!projects || projects.length === 0) {
-      return res
-        .status(200)
-        .json({ success: true, data: [], message: "No projects found" });
-    }
-    res.status(200).json({
-      data: projects.map((project) => ({
-        id: project._id?.toString() || project.id?.toString() || "",
-        name: project.name,
-        description: project.description,
-        createdAt: project.createdAt,
-      })),
-      success: true,
-    });
   } catch (error) {
     console.error("Error fetching projects:", error);
     res.status(500).json({
@@ -133,7 +137,7 @@ export const getProject = async (
     }
     res.status(200).json({
       data: {
-        id: project._id?.toString() || project.id?.toString() || "",
+        _id: project._id?.toString() || "",
         name: project.name,
         description: project.description,
         createdAt: project.createdAt,
@@ -211,10 +215,23 @@ export const deleteProject = async (
   }
 };
 
-const isUserAuthorized = async (userId: string, role: UserRole) => {
+export const isUserManager = async (userId: string, role: UserRole) => {
   const User: IUser | null = await UserModel.findById(userId);
   if (!User) {
     return false;
   }
   return User.role === role;
-}
+};
+
+const getManagerProjects = async (userId: string) => {
+  const projects: IProject[] = await ProjectModel.find({ assignedTo: userId });
+  return projects;
+};
+
+const getDeveloperProjects = async (userId: string) => {
+  const tasks: ITask[] = await TaskModel.find({ assignedTo: userId });
+  const projects: IProject[] = await ProjectModel.find({
+    _id: { $in: tasks.map((task) => task.projectId) },
+  });
+  return projects;
+};

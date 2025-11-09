@@ -13,10 +13,14 @@ declare global {
   }
 }
 
-export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+export const authMiddleware = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   // Support both standard Authorization header and custom token header
   let token: string | undefined;
-  
+
   // Check for Authorization: Bearer <token>
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -29,13 +33,15 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
   if (!token) {
     return res.status(401).json({ success: false, message: "Unauthorized" });
   }
-  
+
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     if (!decoded) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
-    const User: IUser | null = await UserModel.findOne({ email: decoded.email });
+    const User: IUser | null = await UserModel.findOne({
+      email: decoded.email,
+    });
     if (!User) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
@@ -45,4 +51,4 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
   } catch (error) {
     return res.status(401).json({ success: false, message: "Invalid token" });
   }
-}
+};
